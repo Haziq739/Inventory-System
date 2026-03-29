@@ -5,8 +5,8 @@ const fs = require('fs');
 const path = require('path');
 
 const app = express();
-const PORT = 5000;
-
+//const PORT = 5000;
+const PORT = process.env.PORT || 5000;
 app.use(cors());
 app.use(express.json());
 
@@ -439,7 +439,7 @@ app.post('/api/payments', (req, res) => {
     }
     const nextNumber = parseInt(seq.value || "0", 10) + 1;
     dbRun("UPDATE settings SET value = ? WHERE key = 'receipt_sequence'", [nextNumber.toString()]);
-    
+
     // Format receipt number REC-XXXX
     const receiptNumber = `REC-${String(nextNumber).padStart(4, '0')}`;
 
@@ -449,7 +449,7 @@ app.post('/api/payments', (req, res) => {
     );
 
     saveDb();
-    
+
     // Fetch inserted payment to return full object
     const payment = dbGet(`
       SELECT p.*, c.name as client_name, c.code as client_code
