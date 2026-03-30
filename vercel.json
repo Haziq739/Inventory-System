@@ -19,10 +19,7 @@
       "destination": "/backend/server.js"
     },
     {
-      "handle": "filesystem"
-    },
-    {
-      "source": "/(.*)",
+      "source": "/((?!api|assets|favicon.ico|.*\\.).*)",
       "destination": "/index.html"
     }
   ]
