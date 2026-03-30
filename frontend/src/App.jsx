@@ -647,6 +647,20 @@ const App = () => {
                                   }}>
                                     <Download size={16} /> Print
                                   </button>
+                                  <button 
+                                    className="btn btn-ghost" 
+                                    style={{ padding: '0.25rem 0.5rem', color: 'var(--danger)' }} 
+                                    onClick={() => {
+                                      if(window.confirm('Delete this payment record?')) {
+                                        api.delete(`/payments/${p.id}`).then(() => {
+                                          toast.success('Payment deleted');
+                                          fetchPayments();
+                                        }).catch(() => toast.error('Failed to delete payment'));
+                                      }
+                                    }}
+                                  >
+                                    <Trash2 size={16} />
+                                  </button>
                                 </div>
                               </td>
                             </tr>
@@ -712,6 +726,21 @@ const App = () => {
                 try { generateReceiptPDF(viewingReceipt); } catch(e) { toast.error('PDF Export failed'); }
               }}>
                 <Download size={18} /> Download Exact PDF
+              </button>
+              <button 
+                className="btn btn-ghost" 
+                style={{ color: 'var(--danger)' }}
+                onClick={() => {
+                  if(window.confirm('Delete this payment record?')) {
+                    api.delete(`/payments/${viewingReceipt.id}`).then(() => {
+                      toast.success('Payment deleted');
+                      fetchPayments();
+                      setView('payments');
+                    }).catch(() => toast.error('Failed to delete payment'));
+                  }
+                }}
+              >
+                <Trash2 size={18} /> Delete Receipt
               </button>
             </div>
           </div>

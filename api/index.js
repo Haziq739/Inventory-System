@@ -269,6 +269,13 @@ app.post('/api/invoices', async (req, res) => {
     }
 });
 
+app.delete('/api/invoices/:id', async (req, res) => {
+    try {
+        await db.run('DELETE FROM invoices WHERE id = ?', [Number(req.params.id)]);
+        res.json({ success: true });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 app.post('/api/payments', async (req, res) => {
     const { client_id, amount, date, notes } = req.body;
     try {
@@ -297,6 +304,13 @@ app.post('/api/payments', async (req, res) => {
             notes
         });
     } catch(err) { res.status(400).json({ error: err.message }); }
+});
+
+app.delete('/api/payments/:id', async (req, res) => {
+    try {
+        await db.run('DELETE FROM payments WHERE id = ?', [Number(req.params.id)]);
+        res.json({ success: true });
+    } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 if (!process.env.VERCEL) {
