@@ -29,6 +29,11 @@ const App = () => {
   const [paymentFilter, setPaymentFilter] = useState('ALL');
   const [paymentForm, setPaymentForm] = useState({ client_id: '', amount: '', date: new Date().toISOString().split('T')[0], notes: '' });
 
+  // Balances State
+  const [balanceData, setBalanceData] = useState({ ledger: [], summary: { total_receivable: 0, total_paid: 0, balance: 0 } });
+  const [balanceClient, setBalanceClient] = useState('');
+  const [receivableForm, setReceivableForm] = useState({ client_id: '', amount: '', date: new Date().toISOString().split('T')[0], notes: '' });
+
   // Initialize data
   useEffect(() => {
     fetchClients();
@@ -43,6 +48,10 @@ const App = () => {
   const fetchInventory = () => api.get('/inventory').then(res => setInventory(res.data));
   const fetchInvoices = () => api.get('/invoices').then(res => setInvoices(res.data));
   const fetchPayments = () => api.get('/payments').then(res => setPayments(res.data));
+  const fetchBalances = (clientId) => {
+    if (!clientId) return;
+    api.get(`/balances/${clientId}`).then(res => setBalanceData(res.data));
+  };
 
   // --- Dashboard Logic ---
   const handleClientClick = (client) => {
@@ -159,6 +168,18 @@ const App = () => {
     }
   };
 
+  const submitReceivable = async (e) => {
+    e.preventDefault();
+    if (!receivableForm.client_id || !receivableForm.amount) return toast.error('Check fields');
+    try {
+      setIsLoading(true);
+      await api.post('/receivables', receivableForm);
+      toast.success('Receivable added');
+      setReceivableForm({ client_id: receivableForm.client_id, amount: '', date: new Date().toISOString().split('T')[0], notes: '' });
+      fetchBalances(receivableForm.client_id);
+    } catch (err) { toast.error('Failed to add'); } finally { setIsLoading(false); }
+  };
+
   // Filtered inventory
   const filteredInventory = useMemo(() => {
     return inventory.filter(item => {
@@ -194,6 +215,9 @@ const App = () => {
           </button>
           <button className={`btn ${view === 'payments' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setView('payments')}>
             <Banknote size={18} /> Payments
+          </button>
+          <button className={`btn ${view === 'balances' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setView('balances')}>
+            <Banknote size={18} /> Balances
           </button>
           <button className="btn btn-ghost" onClick={toggleTheme} style={{ padding: '0.5rem' }}>
             {theme === 'light' ? <Moon size={20} /> : <Sun size={20} />}
@@ -744,6 +768,139 @@ const App = () => {
               </button>
             </div>
           </div>
+        </section>
+      )}
+
+      {/* View: Balances */}
+      {view === 'balances' && (
+        <section>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
+            <h1>Client Balances & Ledger</h1>
+            <select 
+              style={{ width: '300px' }} 
+              value={balanceClient} 
+              onChange={(e) => {
+                setBalanceClient(e.target.value);
+                setReceivableForm(prev => ({ ...prev, client_id: e.target.value }));
+                fetchBalances(e.target.value);
+              }}
+            >
+              <option value="">Select a Client...</option>
+              {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </div>
+
+          {!balanceClient ? (
+            <div className="card" style={{ textAlign: 'center', padding: '5rem' }}>
+              <Banknote size={48} style={{ color: 'var(--primary)', marginBottom: '1rem', opacity: 0.5 }} />
+              <p>Please select a client from the dropdown above to view their balance and transaction history.</p>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+              {/* Summary Cards */}
+              <div className="client-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}>
+                <div className="card" style={{ borderLeft: '4px solid var(--primary)' }}>
+                  <div style={{ color: '#64748b', fontSize: '0.875rem' }}>Total Receivable</div>
+                  <h2 style={{ margin: '0.5rem 0' }}>Rs. {balanceData.summary.total_receivable.toLocaleString()}</h2>
+                </div>
+                <div className="card" style={{ borderLeft: '4px solid var(--success)' }}>
+                  <div style={{ color: '#64748b', fontSize: '0.875rem' }}>Total Paid</div>
+                  <h2 style={{ margin: '0.5rem 0' }}>Rs. {balanceData.summary.total_paid.toLocaleString()}</h2>
+                </div>
+                <div className="card" style={{ borderLeft: '4px solid var(--danger)', background: 'rgba(239, 68, 68, 0.05)' }}>
+                  <div style={{ color: '#64748b', fontSize: '0.875rem' }}>Net Balance (Remaining)</div>
+                  <h1 style={{ margin: '0.5rem 0', color: 'var(--danger)' }}>Rs. {balanceData.summary.balance.toLocaleString()}</h1>
+                </div>
+              </div>
+
+              <div className="invoice-split" style={{ alignItems: 'flex-start' }}>
+                {/* Ledger History */}
+                <div className="card" style={{ flex: 2 }}>
+                  <h3>Transaction History</h3>
+                  <div className="table-container">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Date</th>
+                          <th>Type</th>
+                          <th>Reference</th>
+                          <th>Amount</th>
+                          <th>Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {balanceData.ledger.map((item, idx) => (
+                          <tr key={idx}>
+                            <td>{item.date}</td>
+                            <td>
+                              <span className={`badge ${item.type === 'PAYMENT' ? 'badge-blue' : 'badge-gray'}`}>
+                                {item.type}
+                              </span>
+                            </td>
+                            <td><strong>{item.ref}</strong></td>
+                            <td style={{ fontWeight: 600, color: item.amount < 0 ? 'var(--success)' : 'inherit' }}>
+                              {item.amount < 0 ? `(Rs. ${Math.abs(item.amount).toLocaleString()})` : `Rs. ${item.amount.toLocaleString()}`}
+                            </td>
+                            <td>
+                              {item.type === 'RECEIVABLE' && (
+                                <button className="btn btn-ghost" style={{ color: 'var(--danger)', padding: '0.25rem' }} onClick={() => {
+                                  if(window.confirm('Delete this entry?')) {
+                                    api.delete(`/receivables/${item.id}`).then(() => {
+                                      toast.success('Deleted');
+                                      fetchBalances(balanceClient);
+                                    });
+                                  }
+                                }}>
+                                  <Trash2 size={16} />
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Add Receivable Form */}
+                <div className="card" style={{ flex: 1 }}>
+                  <h3>Add Amount to be Received</h3>
+                  <p style={{ fontSize: '0.875rem', color: '#64748b', marginBottom: '1.5rem' }}>Manual entry for debt or opening balance.</p>
+                  <form onSubmit={submitReceivable} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                    <div>
+                      <label>Amount (Rs.)</label>
+                      <input 
+                        type="number" 
+                        required 
+                        value={receivableForm.amount}
+                        onChange={(e) => setReceivableForm(prev => ({ ...prev, amount: e.target.value }))}
+                      />
+                    </div>
+                    <div>
+                      <label>Date</label>
+                      <input 
+                        type="date" 
+                        required 
+                        value={receivableForm.date}
+                        onChange={(e) => setReceivableForm(prev => ({ ...prev, date: e.target.value }))}
+                      />
+                    </div>
+                    <div>
+                      <label>Notes/Description</label>
+                      <textarea 
+                        value={receivableForm.notes} 
+                        onChange={(e) => setReceivableForm(prev => ({ ...prev, notes: e.target.value }))}
+                        placeholder="e.g. Opening Balance 2024"
+                      ></textarea>
+                    </div>
+                    <button type="submit" className="btn btn-primary" disabled={isLoading}>
+                      {isLoading ? 'Saving...' : 'Add to Ledger'}
+                    </button>
+                  </form>
+                </div>
+              </div>
+            </div>
+          )}
         </section>
       )}
 
