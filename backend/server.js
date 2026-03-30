@@ -18,13 +18,35 @@ async function initDatabase() {
   console.log('Initializing database... Mode:', isProd ? 'Production' : 'Local');
   
   if (isProd) {
-    db = createClient({
+    const client = createClient({
       url: process.env.TURSO_DATABASE_URL || '',
       authToken: process.env.TURSO_AUTH_TOKEN || '',
     });
+    
+    // Wrap libsql client to match my expected interface
+    db = {
+      execute: async (sql, params = []) => {
+        const res = await client.execute({ sql, args: params });
+        return { rows: res.rows };
+      },
+      run: async (sql, params = []) => {
+        const res = await client.execute({ sql, args: params });
+        return {
+          lastInsertRowid: res.lastInsertRowid,
+          rowsAffected: res.rowsAffected
+        };
+      }
+    };
   } else {
-    // Local SQLite fallback
-    const initSqlJs = require('sql.js');
+    // Local SQLite fallback using sql.js
+    let initSqlJs;
+    try {
+      initSqlJs = require('sql.js');
+    } catch (e) {
+      console.warn('sql.js not found, local fallback will fail. Run npm install.');
+      throw new Error('Local database driver missing');
+    }
+    
     const DB_PATH = path.join(__dirname, 'jannat_uniforms.db');
     const SQL = await initSqlJs({ locateFile: file => path.join(__dirname, file) });
     let tempDb = fs.existsSync(DB_PATH) ? new SQL.Database(fs.readFileSync(DB_PATH)) : new SQL.Database();
@@ -177,14 +199,12 @@ app.get('/api/health', async (req, res) => {
   try {
     const clients = await db.execute('SELECT COUNT(*) as cnt FROM clients');
     const inventory = await db.execute('SELECT COUNT(*) as cnt FROM inventory');
-    const invoices = await db.execute('SELECT COUNT(*) as cnt FROM invoices');
     res.json({ 
       status: 'ok', 
       database: !!db, 
       counts: {
         clients: clients.rows[0].cnt,
-        inventory: inventory.rows[0].cnt,
-        invoices: invoices.rows[0].cnt
+        inventory: inventory.rows[0].cnt
       }
     });
   } catch (err) {
@@ -222,8 +242,6 @@ app.get('/api/payments', async (req, res) => {
   res.json(result.rows);
 });
 
-// ... (Other routes like POST invoices/payments can be simplified/restored if needed, but primary focus is GET for now)
-// Restoring POST routes for functionality
 app.post('/api/invoices', async (req, res) => {
     const { client_id, items, date } = req.body;
     try {
