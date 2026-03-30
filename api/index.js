@@ -321,13 +321,13 @@ app.get('/api/balances/:client_id', async (req, res) => {
   const clientId = Number(req.params.client_id);
   try {
     // 1. Get Invoices
-    const invoicesRes = await db.execute('SELECT id, invoice_number as ref, date, grand_total as amount, "INVOICE" as type FROM invoices WHERE client_id = ?', [clientId]);
+    const invoicesRes = await db.execute("SELECT id, invoice_number as ref, date, grand_total as amount, 'INVOICE' as type FROM invoices WHERE client_id = ?", [clientId]);
     
     // 2. Get Manual Receivables
-    const receivablesRes = await db.execute('SELECT id, "MANUAL" as ref, date, amount, "RECEIVABLE" as type, notes FROM client_receivables WHERE client_id = ?', [clientId]);
+    const receivablesRes = await db.execute("SELECT id, 'MANUAL' as ref, date, amount, 'RECEIVABLE' as type, notes FROM client_receivables WHERE client_id = ?", [clientId]);
     
     // 3. Get Payments
-    const paymentsRes = await db.execute('SELECT id, receipt_number as ref, date, amount, "PAYMENT" as type, notes FROM payments WHERE client_id = ?', [clientId]);
+    const paymentsRes = await db.execute("SELECT id, receipt_number as ref, date, amount, 'PAYMENT' as type, notes FROM payments WHERE client_id = ?", [clientId]);
 
     // Combine and Sort
     const ledger = [
