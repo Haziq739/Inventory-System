@@ -170,14 +170,22 @@ const App = () => {
 
   const submitReceivable = async (e) => {
     e.preventDefault();
-    if (!receivableForm.client_id || !receivableForm.amount) return toast.error('Check fields');
+    if (!balanceClient || !receivableForm.amount) return toast.error('Please select a client and enter an amount');
     try {
       setIsLoading(true);
-      await api.post('/receivables', receivableForm);
-      toast.success('Receivable added');
-      setReceivableForm({ client_id: receivableForm.client_id, amount: '', date: new Date().toISOString().split('T')[0], notes: '' });
-      fetchBalances(receivableForm.client_id);
-    } catch (err) { toast.error('Failed to add'); } finally { setIsLoading(false); }
+      await api.post('/receivables', { ...receivableForm, client_id: balanceClient });
+      toast.success('Amount added to ledger');
+      
+      // Clear form except for client_id
+      setReceivableForm({ client_id: balanceClient, amount: '', date: new Date().toISOString().split('T')[0], notes: '' });
+      
+      // Refresh balance after a very short delay to ensure DB propagation
+      setTimeout(() => fetchBalances(balanceClient), 300);
+    } catch (err) { 
+      toast.error('Failed to update balance'); 
+    } finally { 
+      setIsLoading(false); 
+    }
   };
 
   // Filtered inventory

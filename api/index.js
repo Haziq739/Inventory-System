@@ -331,22 +331,26 @@ app.get('/api/balances/:client_id', async (req, res) => {
 
     // Combine and Sort
     const ledger = [
-      ...invoicesRes.rows.map(r => ({ ...r, amount: Number(r.amount) })),
-      ...receivablesRes.rows.map(r => ({ ...r, amount: Number(r.amount) })),
-      ...paymentsRes.rows.map(r => ({ ...r, amount: -Number(r.amount) })) // Payments are negative in ledger
+      ...invoicesRes.rows.map(r => ({ id: r.id, ref: r.ref, date: r.date, amount: Number(r.amount), type: 'INVOICE' })),
+      ...receivablesRes.rows.map(r => ({ id: r.id, ref: 'MANUAL', date: r.date, amount: Number(r.amount), type: 'RECEIVABLE', notes: r.notes })),
+      ...paymentsRes.rows.map(r => ({ id: r.id, ref: r.ref, date: r.date, amount: -Number(r.amount), type: 'PAYMENT', notes: r.notes }))
     ].sort((a, b) => new Date(b.date) - new Date(a.date));
 
-    // Calculate Totals
-    const totalInvoices = invoicesRes.rows.reduce((sum, r) => sum + Number(r.amount), 0);
-    const totalReceivables = receivablesRes.rows.reduce((sum, r) => sum + Number(r.amount), 0);
-    const totalPayments = paymentsRes.rows.reduce((sum, r) => sum + Number(r.amount), 0);
+    // Calculate Totals directly from the ledger for perfect sync
+    const totalReceivable = ledger
+      .filter(item => item.type === 'INVOICE' || item.type === 'RECEIVABLE')
+      .reduce((sum, item) => sum + item.amount, 0);
+    
+    const totalPaid = ledger
+      .filter(item => item.type === 'PAYMENT')
+      .reduce((sum, item) => sum + Math.abs(item.amount), 0);
     
     res.json({
       ledger,
       summary: {
-        total_receivable: totalInvoices + totalReceivables,
-        total_paid: totalPayments,
-        balance: (totalInvoices + totalReceivables) - totalPayments
+        total_receivable: totalReceivable,
+        total_paid: totalPaid,
+        balance: totalReceivable - totalPaid
       }
     });
   } catch (err) { res.status(500).json({ error: err.message }); }
