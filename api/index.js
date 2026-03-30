@@ -148,7 +148,7 @@ app.use(async (req, res, next) => {
 });
 
 // Routes
-app.get('/health', async (req, res) => {
+app.get('/api/health', async (req, res) => {
   try {
     const clients = await db.execute('SELECT COUNT(*) as cnt FROM clients');
     const inventory = await db.execute('SELECT COUNT(*) as cnt FROM inventory');
@@ -165,37 +165,37 @@ app.get('/health', async (req, res) => {
   }
 });
 
-app.get('/clients', async (req, res) => {
+app.get('/api/clients', async (req, res) => {
   const result = await db.execute('SELECT * FROM clients ORDER BY name');
   res.json(result.rows);
 });
 
-app.get('/clients/:id', async (req, res) => {
+app.get('/api/clients/:id', async (req, res) => {
   const result = await db.execute('SELECT * FROM clients WHERE id = ?', [Number(req.params.id)]);
   res.json(result.rows[0] || { error: 'Not found' });
 });
 
-app.get('/categories', async (req, res) => {
+app.get('/api/categories', async (req, res) => {
   const result = await db.execute('SELECT * FROM categories ORDER BY name');
   res.json(result.rows);
 });
 
-app.get('/inventory', async (req, res) => {
+app.get('/api/inventory', async (req, res) => {
   const result = await db.execute('SELECT i.*, c.name as category_name FROM inventory i JOIN categories c ON i.category_id = c.id ORDER BY c.name, i.name');
   res.json(result.rows);
 });
 
-app.get('/invoices', async (req, res) => {
+app.get('/api/invoices', async (req, res) => {
   const result = await db.execute('SELECT inv.*, cl.name as client_name FROM invoices inv JOIN clients cl ON inv.client_id = cl.id ORDER BY inv.created_at DESC');
   res.json(result.rows);
 });
 
-app.get('/payments', async (req, res) => {
+app.get('/api/payments', async (req, res) => {
   const result = await db.execute('SELECT p.*, c.name as client_name, c.code as client_code FROM payments p JOIN clients c ON p.client_id = c.id ORDER BY p.id DESC');
   res.json(result.rows);
 });
 
-app.post('/invoices', async (req, res) => {
+app.post('/api/invoices', async (req, res) => {
     const { client_id, items, date } = req.body;
     try {
         const clientRes = await db.execute('SELECT * FROM clients WHERE id = ?', [Number(client_id)]);
@@ -209,7 +209,7 @@ app.post('/invoices', async (req, res) => {
     } catch(err) { res.status(400).json({ error: err.message }); }
 });
 
-app.post('/payments', async (req, res) => {
+app.post('/api/payments', async (req, res) => {
     const { client_id, amount, date, notes } = req.body;
     try {
         let seqRes = await db.execute("SELECT value FROM settings WHERE key = 'receipt_sequence'");
