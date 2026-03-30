@@ -1,41 +1,77 @@
 const express = require('express');
 const cors = require('cors');
-const initSqlJs = require('sql.js');
+const { createClient } = require('@libsql/client');
 const fs = require('fs');
 const path = require('path');
 
 const app = express();
-//const PORT = 5000;
 const PORT = process.env.PORT || 5000;
 app.use(cors());
 app.use(express.json());
 
-const DB_PATH = path.join(__dirname, 'jannat_uniforms.db');
+// Database configuration
+const isProd = process.env.NODE_ENV === 'production' || process.env.TURSO_DATABASE_URL;
 let db;
 
-// Save database to file periodically and on changes
-function saveDb() {
-  const data = db.export();
-  const buffer = Buffer.from(data);
-  fs.writeFileSync(DB_PATH, buffer);
-}
-
 async function initDatabase() {
-  const SQL = await initSqlJs({
-    locateFile: file => path.join(__dirname, file)
-  });
-
-  if (fs.existsSync(DB_PATH)) {
-    const fileBuffer = fs.readFileSync(DB_PATH);
-    db = new SQL.Database(fileBuffer);
+  if (isProd) {
+    // Turso / Cloud SQLite
+    db = createClient({
+      url: process.env.TURSO_DATABASE_URL || '',
+      authToken: process.env.TURSO_AUTH_TOKEN || '',
+    });
+    console.log('Using Turso Cloud Database');
   } else {
-    db = new SQL.Database();
+    // Local SQLite fallback using sql.js
+    const initSqlJs = require('sql.js');
+    const DB_PATH = path.join(__dirname, 'jannat_uniforms.db');
+    
+    const SQL = await initSqlJs({
+      locateFile: file => path.join(__dirname, file)
+    });
+
+    let tempDb;
+    if (fs.existsSync(DB_PATH)) {
+      const fileBuffer = fs.readFileSync(DB_PATH);
+      tempDb = new SQL.Database(fileBuffer);
+    } else {
+      tempDb = new SQL.Database();
+    }
+
+    // Adaptation layer for sql.js to match libsql client interface
+    db = {
+      execute: async (sql, params = []) => {
+        const stmt = tempDb.prepare(sql);
+        if (params.length) stmt.bind(params);
+        const rows = [];
+        while (stmt.step()) {
+          rows.push(stmt.getAsObject());
+        }
+        stmt.free();
+        
+        // Save on every write for local dev
+        if (!sql.trim().toUpperCase().startsWith('SELECT')) {
+          const data = tempDb.export();
+          fs.writeFileSync(DB_PATH, Buffer.from(data));
+        }
+        
+        return { rows };
+      },
+      run: async (sql, params = []) => {
+          tempDb.run(sql, params);
+          const data = tempDb.export();
+          fs.writeFileSync(DB_PATH, Buffer.from(data));
+          return {
+              lastInsertRowid: tempDb.exec("SELECT last_insert_rowid()")[0]?.values[0]?.[0],
+              rowsAffected: tempDb.getRowsModified()
+          };
+      }
+    };
+    console.log('Using Local SQLite Database');
   }
 
-  db.run('PRAGMA foreign_keys = ON');
-
-  // Create tables
-  db.run(`
+  // Create tables if they don't exist
+  await db.run(`
     CREATE TABLE IF NOT EXISTS clients (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
@@ -44,14 +80,14 @@ async function initDatabase() {
     )
   `);
 
-  db.run(`
+  await db.run(`
     CREATE TABLE IF NOT EXISTS categories (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL UNIQUE
     )
   `);
 
-  db.run(`
+  await db.run(`
     CREATE TABLE IF NOT EXISTS inventory (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
@@ -63,7 +99,7 @@ async function initDatabase() {
     )
   `);
 
-  db.run(`
+  await db.run(`
     CREATE TABLE IF NOT EXISTS invoices (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       invoice_number TEXT NOT NULL UNIQUE,
@@ -75,7 +111,7 @@ async function initDatabase() {
     )
   `);
 
-  db.run(`
+  await db.run(`
     CREATE TABLE IF NOT EXISTS invoice_items (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       invoice_id INTEGER NOT NULL,
@@ -90,7 +126,7 @@ async function initDatabase() {
     )
   `);
 
-  db.run(`
+  await db.run(`
     CREATE TABLE IF NOT EXISTS invoice_sequences (
       client_id INTEGER PRIMARY KEY,
       last_number INTEGER NOT NULL DEFAULT 0,
@@ -98,14 +134,14 @@ async function initDatabase() {
     )
   `);
 
-  db.run(`
+  await db.run(`
     CREATE TABLE IF NOT EXISTS settings (
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL
     )
   `);
 
-  db.run(`
+  await db.run(`
     CREATE TABLE IF NOT EXISTS payments (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       receipt_number TEXT NOT NULL UNIQUE,
@@ -118,43 +154,15 @@ async function initDatabase() {
     )
   `);
 
-  // Seed data
-  seedData();
-  saveDb();
-}
-
-// Helper functions for db queries
-function dbAll(query, params = []) {
-  const stmt = db.prepare(query);
-  if (params.length) stmt.bind(params);
-  const results = [];
-  while (stmt.step()) {
-    results.push(stmt.getAsObject());
+  // Initial seed check
+  const check = await db.execute('SELECT COUNT(*) as count FROM clients');
+  if (check.rows[0].count === 0) {
+    await seedData();
   }
-  stmt.free();
-  return results;
 }
 
-function dbGet(query, params = []) {
-  const results = dbAll(query, params);
-  return results.length > 0 ? results[0] : null;
-}
-
-function dbRun(query, params = []) {
-  db.run(query, params);
-  return {
-    lastInsertRowid: db.exec("SELECT last_insert_rowid()")[0]?.values[0]?.[0],
-    changes: db.getRowsModified()
-  };
-}
-
-function seedData() {
-  const result = dbGet('SELECT COUNT(*) as count FROM clients');
-  if (result.count > 0) return;
-
+async function seedData() {
   console.log('Seeding database...');
-
-  // Insert clients
   const clients = [
     ['Asia Book Depot', 'ABD'],
     ['Royal Genius Cambridge High School', 'RGCHS'],
@@ -162,19 +170,17 @@ function seedData() {
     ['Gujranwala Food Industry', 'GFI']
   ];
   for (const [name, code] of clients) {
-    dbRun('INSERT INTO clients (name, code) VALUES (?, ?)', [name, code]);
+    await db.run('INSERT INTO clients (name, code) VALUES (?, ?)', [name, code]);
   }
 
-  // Insert categories
-  dbRun("INSERT INTO categories (name) VALUES (?)", ['RILLS']);
-  dbRun("INSERT INTO categories (name) VALUES (?)", ['STEP SCHOOL']);
+  await db.run("INSERT INTO categories (name) VALUES (?)", ['RILLS']);
+  await db.run("INSERT INTO categories (name) VALUES (?)", ['STEP SCHOOL']);
 
-  const rills = dbGet("SELECT id FROM categories WHERE name = 'RILLS'");
-  const step = dbGet("SELECT id FROM categories WHERE name = 'STEP SCHOOL'");
-  const rillsId = rills.id;
-  const stepId = step.id;
+  const rills = await db.execute("SELECT id FROM categories WHERE name = 'RILLS'");
+  const step = await db.execute("SELECT id FROM categories WHERE name = 'STEP SCHOOL'");
+  const rillsId = rills.rows[0].id;
+  const stepId = step.rows[0].id;
 
-  // Insert inventory items
   const items = [
     ['Rills Boy Shirt 18', 'RILLS-SH-18', rillsId, 760],
     ['Rills Boy Shirt 20', 'RILLS-SH-20', rillsId, 760],
@@ -217,46 +223,45 @@ function seedData() {
   ];
 
   for (const [name, code, catId, price] of items) {
-    dbRun('INSERT INTO inventory (name, code, category_id, price) VALUES (?, ?, ?, ?)', [name, code, catId, price]);
+    await db.run('INSERT INTO inventory (name, code, category_id, price) VALUES (?, ?, ?, ?)', [name, code, catId, price]);
   }
 
-  // Initialize invoice sequences
-  const allClients = dbAll('SELECT id FROM clients');
+  const allClients = (await db.execute('SELECT id FROM clients')).rows;
   for (const c of allClients) {
-    dbRun('INSERT INTO invoice_sequences (client_id, last_number) VALUES (?, 0)', [c.id]);
+    await db.run('INSERT INTO invoice_sequences (client_id, last_number) VALUES (?, 0)', [c.id]);
   }
 
-  // Default settings
-  dbRun("INSERT OR IGNORE INTO settings (key, value) VALUES ('theme', 'light')");
-  dbRun("INSERT OR IGNORE INTO settings (key, value) VALUES ('receipt_sequence', '0')");
+  await db.run("INSERT OR IGNORE INTO settings (key, value) VALUES ('theme', 'light')");
+  await db.run("INSERT OR IGNORE INTO settings (key, value) VALUES ('receipt_sequence', '0')");
 
   console.log('Database seeded successfully!');
 }
 
-// ============================================================
-// API ROUTES
-// ============================================================
-
-// --- CLIENTS ---
-app.get('/api/clients', (req, res) => {
-  const clients = dbAll('SELECT * FROM clients ORDER BY name');
-  res.json(clients);
+// API Middleware to ensure DB is initialized
+app.use(async (req, res, next) => {
+  if (!db) await initDatabase();
+  next();
 });
 
-app.get('/api/clients/:id', (req, res) => {
-  const client = dbGet('SELECT * FROM clients WHERE id = ?', [Number(req.params.id)]);
-  if (!client) return res.status(404).json({ error: 'Client not found' });
-  res.json(client);
+// --- API ROUTES ---
+
+app.get('/api/clients', async (req, res) => {
+  const result = await db.execute('SELECT * FROM clients ORDER BY name');
+  res.json(result.rows);
 });
 
-// --- CATEGORIES ---
-app.get('/api/categories', (req, res) => {
-  const categories = dbAll('SELECT * FROM categories ORDER BY name');
-  res.json(categories);
+app.get('/api/clients/:id', async (req, res) => {
+  const result = await db.execute('SELECT * FROM clients WHERE id = ?', [Number(req.params.id)]);
+  if (result.rows.length === 0) return res.status(404).json({ error: 'Client not found' });
+  res.json(result.rows[0]);
 });
 
-// --- INVENTORY ---
-app.get('/api/inventory', (req, res) => {
+app.get('/api/categories', async (req, res) => {
+  const result = await db.execute('SELECT * FROM categories ORDER BY name');
+  res.json(result.rows);
+});
+
+app.get('/api/inventory', async (req, res) => {
   const { search, category_id } = req.query;
   let query = `
     SELECT i.*, c.name as category_name 
@@ -280,24 +285,20 @@ app.get('/api/inventory', (req, res) => {
   }
   query += ' ORDER BY c.name, i.name';
 
-  const items = dbAll(query, params);
-  res.json(items);
+  const result = await db.execute(query, params);
+  res.json(result.rows);
 });
 
-app.put('/api/inventory/:id/price', (req, res) => {
+app.put('/api/inventory/:id/price', async (req, res) => {
   const { price } = req.body;
-  if (price == null || price < 0) {
-    return res.status(400).json({ error: 'Invalid price' });
-  }
-  const result = dbRun('UPDATE inventory SET price = ? WHERE id = ?', [price, Number(req.params.id)]);
-  if (result.changes === 0) return res.status(404).json({ error: 'Item not found' });
-  saveDb();
-  const item = dbGet('SELECT i.*, c.name as category_name FROM inventory i JOIN categories c ON i.category_id = c.id WHERE i.id = ?', [Number(req.params.id)]);
-  res.json(item);
+  if (price == null || price < 0) return res.status(400).json({ error: 'Invalid price' });
+  
+  await db.run('UPDATE inventory SET price = ? WHERE id = ?', [price, Number(req.params.id)]);
+  const item = await db.execute('SELECT i.*, c.name as category_name FROM inventory i JOIN categories c ON i.category_id = c.id WHERE i.id = ?', [Number(req.params.id)]);
+  res.json(item.rows[0]);
 });
 
-// --- INVOICES ---
-app.get('/api/invoices', (req, res) => {
+app.get('/api/invoices', async (req, res) => {
   const { client_id } = req.query;
   let query = `
     SELECT inv.*, cl.name as client_name, cl.code as client_code
@@ -305,47 +306,42 @@ app.get('/api/invoices', (req, res) => {
     JOIN clients cl ON inv.client_id = cl.id
   `;
   const params = [];
-
   if (client_id) {
     query += ' WHERE inv.client_id = ?';
     params.push(Number(client_id));
   }
   query += ' ORDER BY inv.created_at DESC';
-
-  const invoices = dbAll(query, params);
-  res.json(invoices);
+  const result = await db.execute(query, params);
+  res.json(result.rows);
 });
 
-app.get('/api/invoices/:id', (req, res) => {
-  const invoice = dbGet(`
+app.get('/api/invoices/:id', async (req, res) => {
+  const invRes = await db.execute(`
     SELECT inv.*, cl.name as client_name, cl.code as client_code
     FROM invoices inv
     JOIN clients cl ON inv.client_id = cl.id
     WHERE inv.id = ?
   `, [Number(req.params.id)]);
 
-  if (!invoice) return res.status(404).json({ error: 'Invoice not found' });
-
-  const items = dbAll('SELECT * FROM invoice_items WHERE invoice_id = ?', [Number(req.params.id)]);
-  invoice.items = items;
+  if (invRes.rows.length === 0) return res.status(404).json({ error: 'Invoice not found' });
+  const invoice = invRes.rows[0];
+  const items = await db.execute('SELECT * FROM invoice_items WHERE invoice_id = ?', [Number(req.params.id)]);
+  invoice.items = items.rows;
   res.json(invoice);
 });
 
-app.post('/api/invoices', (req, res) => {
+app.post('/api/invoices', async (req, res) => {
   const { client_id, items, date } = req.body;
+  if (!client_id || !items || items.length === 0) return res.status(400).json({ error: 'Client and items required' });
 
-  if (!client_id || !items || items.length === 0) {
-    return res.status(400).json({ error: 'Client and at least one item are required' });
-  }
-
-  const client = dbGet('SELECT * FROM clients WHERE id = ?', [Number(client_id)]);
-  if (!client) return res.status(404).json({ error: 'Client not found' });
+  const clientRes = await db.execute('SELECT * FROM clients WHERE id = ?', [Number(client_id)]);
+  if (clientRes.rows.length === 0) return res.status(404).json({ error: 'Client not found' });
+  const client = clientRes.rows[0];
 
   try {
-    // Get and increment sequence
-    const seq = dbGet('SELECT last_number FROM invoice_sequences WHERE client_id = ?', [Number(client_id)]);
-    const nextNum = (seq ? seq.last_number : 0) + 1;
-    dbRun('UPDATE invoice_sequences SET last_number = ? WHERE client_id = ?', [nextNum, Number(client_id)]);
+    const seqRes = await db.execute('SELECT last_number FROM invoice_sequences WHERE client_id = ?', [Number(client_id)]);
+    const nextNum = (seqRes.rows[0] ? seqRes.rows[0].last_number : 0) + 1;
+    await db.run('UPDATE invoice_sequences SET last_number = ? WHERE client_id = ?', [nextNum, Number(client_id)]);
 
     const invoiceNumber = `${client.code}-${String(nextNum).padStart(4, '0')}`;
     const invoiceDate = date || new Date().toISOString().split('T')[0];
@@ -354,7 +350,8 @@ app.post('/api/invoices', (req, res) => {
     const resolvedItems = [];
 
     for (const item of items) {
-      const invItem = dbGet('SELECT * FROM inventory WHERE id = ?', [Number(item.item_id)]);
+      const invItemRes = await db.execute('SELECT * FROM inventory WHERE id = ?', [Number(item.item_id)]);
+      const invItem = invItemRes.rows[0];
       if (!invItem) throw new Error(`Item ${item.item_id} not found`);
 
       const unitPrice = item.unit_price != null ? item.unit_price : invItem.price;
@@ -370,26 +367,21 @@ app.post('/api/invoices', (req, res) => {
       });
     }
 
-    // Insert invoice
-    const result = dbRun(
+    const result = await db.run(
       'INSERT INTO invoices (invoice_number, client_id, date, grand_total) VALUES (?, ?, ?, ?)',
       [invoiceNumber, Number(client_id), invoiceDate, grandTotal]
     );
 
     const invoiceId = result.lastInsertRowid;
-
-    // Insert invoice items
     for (const ri of resolvedItems) {
-      dbRun(
+      await db.run(
         'INSERT INTO invoice_items (invoice_id, item_id, item_name, item_code, quantity, unit_price, total) VALUES (?, ?, ?, ?, ?, ?, ?)',
         [invoiceId, ri.item_id, ri.item_name, ri.item_code, ri.quantity, ri.unit_price, ri.total]
       );
     }
 
-    saveDb();
-
     res.status(201).json({
-      id: invoiceId,
+      id: Number(invoiceId),
       invoice_number: invoiceNumber,
       client_id: Number(client_id),
       client_name: client.name,
@@ -403,94 +395,72 @@ app.post('/api/invoices', (req, res) => {
   }
 });
 
-app.delete('/api/invoices/:id', (req, res) => {
-  // First delete invoice items (manual cascade since sql.js may not handle it)
-  dbRun('DELETE FROM invoice_items WHERE invoice_id = ?', [Number(req.params.id)]);
-  const result = dbRun('DELETE FROM invoices WHERE id = ?', [Number(req.params.id)]);
-  if (result.changes === 0) return res.status(404).json({ error: 'Invoice not found' });
-  saveDb();
+app.delete('/api/invoices/:id', async (req, res) => {
+  await db.run('DELETE FROM invoice_items WHERE invoice_id = ?', [Number(req.params.id)]);
+  await db.run('DELETE FROM invoices WHERE id = ?', [Number(req.params.id)]);
   res.json({ success: true });
 });
 
-// --- PAYMENTS ---
-app.get('/api/payments', (req, res) => {
-  const query = `
+app.get('/api/payments', async (req, res) => {
+  const result = await db.execute(`
     SELECT p.*, c.name as client_name, c.code as client_code
     FROM payments p
     JOIN clients c ON p.client_id = c.id
     ORDER BY p.id DESC
-  `;
-  const payments = dbAll(query);
-  res.json(payments);
+  `);
+  res.json(result.rows);
 });
 
-app.post('/api/payments', (req, res) => {
+app.post('/api/payments', async (req, res) => {
   const { client_id, amount, date, notes } = req.body;
-  if (!client_id || !amount || !date) {
-    return res.status(400).json({ error: 'Missing required fields' });
-  }
+  if (!client_id || !amount || !date) return res.status(400).json({ error: 'Missing fields' });
 
   try {
-    // Get unique receipt number
-    let seq = dbGet("SELECT value FROM settings WHERE key = 'receipt_sequence'");
-    if (!seq) {
-      dbRun("INSERT INTO settings (key, value) VALUES ('receipt_sequence', '0')");
-      seq = { value: "0" };
-    }
-    const nextNumber = parseInt(seq.value || "0", 10) + 1;
-    dbRun("UPDATE settings SET value = ? WHERE key = 'receipt_sequence'", [nextNumber.toString()]);
+    let seqRes = await db.execute("SELECT value FROM settings WHERE key = 'receipt_sequence'");
+    const nextNumber = parseInt(seqRes.rows[0]?.value || "0", 10) + 1;
+    await db.run("UPDATE settings SET value = ? WHERE key = 'receipt_sequence'", [nextNumber.toString()]);
 
-    // Format receipt number REC-XXXX
     const receiptNumber = `REC-${String(nextNumber).padStart(4, '0')}`;
-
-    const result = dbRun(
+    const result = await db.run(
       'INSERT INTO payments (receipt_number, client_id, amount, date, notes) VALUES (?, ?, ?, ?, ?)',
       [receiptNumber, Number(client_id), Number(amount), date, notes || '']
     );
 
-    saveDb();
-
-    // Fetch inserted payment to return full object
-    const payment = dbGet(`
+    const payment = await db.execute(`
       SELECT p.*, c.name as client_name, c.code as client_code
       FROM payments p
       JOIN clients c ON p.client_id = c.id
       WHERE p.id = ?
     `, [result.lastInsertRowid]);
 
-    res.status(201).json(payment);
+    res.status(201).json(payment.rows[0]);
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
 });
 
-// --- SETTINGS ---
-app.get('/api/settings', (req, res) => {
-  const settings = dbAll('SELECT * FROM settings');
+app.get('/api/settings', async (req, res) => {
+  const result = await db.execute('SELECT * FROM settings');
   const obj = {};
-  for (const s of settings) obj[s.key] = s.value;
+  for (const s of result.rows) obj[s.key] = s.value;
   res.json(obj);
 });
 
-app.put('/api/settings', (req, res) => {
+app.put('/api/settings', async (req, res) => {
   for (const [key, value] of Object.entries(req.body)) {
-    dbRun("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", [key, String(value)]);
+    await db.run("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", [key, String(value)]);
   }
-  saveDb();
   res.json({ success: true });
 });
 
-// ============================================================
-// START SERVER
-// ============================================================
-async function start() {
-  await initDatabase();
-  app.listen(PORT, () => {
-    console.log(`Jannat Uniforms API running on http://localhost:${PORT}`);
+// For local running
+if (!process.env.VERCEL) {
+  initDatabase().then(() => {
+    app.listen(PORT, () => {
+      console.log(`Jannat Uniforms API running on http://localhost:${PORT}`);
+    });
   });
 }
 
-start().catch(err => {
-  console.error('Failed to start server:', err);
-  process.exit(1);
-});
+// Export for Vercel
+module.exports = app;
