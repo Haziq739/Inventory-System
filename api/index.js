@@ -372,6 +372,27 @@ app.delete('/api/receivables/:id', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+app.delete('/api/balances/:client_id/receivables', async (req, res) => {
+  try {
+    await db.run('DELETE FROM client_receivables WHERE client_id = ?', [Number(req.params.client_id)]);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.delete('/api/balances/:client_id/history', async (req, res) => {
+  const clientId = Number(req.params.client_id);
+  try {
+    // Delete manual receivables
+    await db.run('DELETE FROM client_receivables WHERE client_id = ?', [clientId]);
+    // Delete payments
+    await db.run('DELETE FROM payments WHERE client_id = ?', [clientId]);
+    // Delete invoices (cascade will handle items)
+    await db.run('DELETE FROM invoices WHERE client_id = ?', [clientId]);
+    
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 if (!process.env.VERCEL) {
   getDb().then(() => app.listen(PORT, () => console.log(`API on http://localhost:${PORT}`)));
 }

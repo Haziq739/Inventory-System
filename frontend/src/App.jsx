@@ -211,6 +211,41 @@ const App = () => {
     }
   };
 
+  const clearManualTotals = async () => {
+    if (!window.confirm('Are you sure? This will delete ALL manual receivable entries for this client. Invoices and Payments will NOT be affected.')) return;
+    try {
+      setIsLoading(true);
+      await api.delete(`/balances/${balanceClient}/receivables`);
+      toast.success('Manual totals cleared');
+      fetchBalances(balanceClient);
+    } catch (err) {
+      toast.error('Failed to clear totals');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const clearFullHistory = async () => {
+    if (!window.confirm('CRITICAL WARNING: This will permanently delete ALL Invoices, Payments, and Manual entries for this client. This cannot be undone. Proceed?')) {
+      return;
+    }
+    if (!window.confirm('FINAL CONFIRMATION: Are you absolutely sure you want to wipe this client\'s entire history?')) {
+      return;
+    }
+    try {
+      setIsLoading(true);
+      await api.delete(`/balances/${balanceClient}/history`);
+      toast.success('Client history successfully wiped');
+      fetchBalances(balanceClient);
+      fetchInvoices();
+      fetchPayments();
+    } catch (err) {
+      toast.error('Failed to clear history');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   // Filtered inventory
   const filteredInventory = useMemo(() => {
     return inventory.filter(item => {
@@ -901,6 +936,25 @@ const App = () => {
                       </tbody>
                     </table>
                   </div>
+
+                  {balanceClient && (
+                    <div style={{ marginTop: '2rem', paddingTop: '1rem', borderTop: '1px solid var(--border-color)', display: 'flex', gap: '1rem', justifyContent: 'flex-end' }}>
+                      <button 
+                        className="btn btn-ghost" 
+                        style={{ color: 'var(--danger)', fontSize: '0.75rem' }}
+                        onClick={clearManualTotals}
+                      >
+                        Clear Manual Totals
+                      </button>
+                      <button 
+                        className="btn" 
+                        style={{ backgroundColor: 'var(--danger)', color: 'white', fontSize: '0.75rem' }}
+                        onClick={clearFullHistory}
+                      >
+                        Clear All History
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 {/* Add Transaction Form */}
@@ -945,8 +999,19 @@ const App = () => {
                       />
                     </div>
                     <div>
-                      <label>Notes/Description</label>
+                      <label style={{ display: 'block', marginBottom: '0.5rem' }}>Notes/Description</label>
                       <textarea 
+                        style={{ 
+                          width: '100%', 
+                          minHeight: '80px', 
+                          padding: '0.75rem', 
+                          borderRadius: '8px', 
+                          border: '1px solid var(--border-color)',
+                          fontFamily: 'inherit',
+                          fontSize: '0.875rem',
+                          outline: 'none',
+                          resize: 'vertical'
+                        }}
                         value={receivableForm.notes} 
                         onChange={(e) => setReceivableForm(prev => ({ ...prev, notes: e.target.value }))}
                         placeholder="e.g. Opening Balance 2024"
