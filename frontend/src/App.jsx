@@ -606,6 +606,7 @@ const App = () => {
                               api.delete(`/invoices/${inv.id}`).then(() => {
                                 toast.success('Invoice deleted');
                                 fetchInvoices();
+                                if(balanceClient) fetchBalances(balanceClient);
                               });
                             }
                           }}>
@@ -745,6 +746,7 @@ const App = () => {
                                         api.delete(`/payments/${p.id}`).then(() => {
                                           toast.success('Payment deleted');
                                           fetchPayments();
+                                          if(balanceClient) fetchBalances(balanceClient);
                                         }).catch(() => toast.error('Failed to delete payment'));
                                       }
                                     }}
@@ -825,6 +827,7 @@ const App = () => {
                     api.delete(`/payments/${viewingReceipt.id}`).then(() => {
                       toast.success('Payment deleted');
                       fetchPayments();
+                      if(balanceClient) fetchBalances(balanceClient);
                       setView('payments');
                     }).catch(() => toast.error('Failed to delete payment'));
                   }
@@ -867,15 +870,17 @@ const App = () => {
               <div className="client-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}>
                 <div className="card" style={{ borderLeft: '4px solid var(--primary)' }}>
                   <div style={{ color: '#64748b', fontSize: '0.875rem' }}>Total Receivable</div>
-                  <h2 style={{ margin: '0.5rem 0' }}>Rs. {balanceData.summary.total_receivable.toLocaleString()}</h2>
+                  <h2 style={{ margin: '0.5rem 0' }}>Rs. {Math.round(balanceData.summary.total_receivable).toLocaleString()}</h2>
                 </div>
                 <div className="card" style={{ borderLeft: '4px solid var(--success)' }}>
                   <div style={{ color: '#64748b', fontSize: '0.875rem' }}>Total Paid</div>
-                  <h2 style={{ margin: '0.5rem 0' }}>Rs. {balanceData.summary.total_paid.toLocaleString()}</h2>
+                  <h2 style={{ margin: '0.5rem 0' }}>Rs. {Math.round(balanceData.summary.total_paid).toLocaleString()}</h2>
                 </div>
-                <div className="card" style={{ borderLeft: '4px solid var(--danger)', background: 'rgba(239, 68, 68, 0.05)' }}>
+                <div className="card" style={{ borderLeft: `4px solid ${balanceData.summary.balance > 0 ? 'var(--danger)' : 'var(--success)'}`, background: balanceData.summary.balance > 0 ? 'rgba(239, 68, 68, 0.05)' : 'rgba(16, 185, 129, 0.05)' }}>
                   <div style={{ color: '#64748b', fontSize: '0.875rem' }}>Net Balance (Remaining)</div>
-                  <h1 style={{ margin: '0.5rem 0', color: 'var(--danger)' }}>Rs. {balanceData.summary.balance.toLocaleString()}</h1>
+                  <h1 style={{ margin: '0.5rem 0', color: balanceData.summary.balance > 0 ? 'var(--danger)' : 'var(--success)' }}>
+                    Rs. {Math.max(0, Math.round(balanceData.summary.balance)).toLocaleString()}
+                  </h1>
                 </div>
               </div>
 

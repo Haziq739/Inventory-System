@@ -337,20 +337,20 @@ app.get('/api/balances/:client_id', async (req, res) => {
     ].sort((a, b) => new Date(b.date) - new Date(a.date));
 
     // Calculate Totals directly from the ledger for perfect sync
-    const totalReceivable = ledger
+    const totalReceivable = Math.round(ledger
       .filter(item => item.type === 'INVOICE' || item.type === 'RECEIVABLE')
-      .reduce((sum, item) => sum + item.amount, 0);
+      .reduce((sum, item) => sum + item.amount, 0));
     
-    const totalPaid = ledger
+    const totalPaid = Math.round(ledger
       .filter(item => item.type === 'PAYMENT')
-      .reduce((sum, item) => sum + Math.abs(item.amount), 0);
+      .reduce((sum, item) => sum + Math.abs(item.amount), 0));
     
     res.json({
       ledger,
       summary: {
         total_receivable: totalReceivable,
         total_paid: totalPaid,
-        balance: totalReceivable - totalPaid
+        balance: Math.max(0, totalReceivable - totalPaid)
       }
     });
   } catch (err) { res.status(500).json({ error: err.message }); }
