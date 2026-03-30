@@ -2,8 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Users, Package, FileText, Plus, Moon, Sun, 
   Search, Trash2, Download, CheckCircle, ChevronLeft,
-  X, ShoppingCart, Pencil, Save, Eye, Banknote,
-  LayoutDashboard, CreditCard
+  X, ShoppingCart, Pencil, Save, Eye, Banknote
 } from 'lucide-react';
 import { toast, Toaster } from 'react-hot-toast';
 import api from './api/api';
@@ -258,70 +257,60 @@ const App = () => {
   }, [inventory, searchQuery, activeCategory]);
 
   return (
-    <div className="app-container" data-theme={theme}>
+    <div className="app-container">
       <Toaster position="top-right" />
       
       {/* Navigation Bar */}
-      <header className="nav-container">
-        <div className="nav-pill">
-          <button className={`nav-item ${view === 'dashboard' ? 'active' : ''}`} onClick={() => setView('dashboard')}>
-            <LayoutDashboard size={18} /> <span>Dashboard</span>
-          </button>
-          <button className={`nav-item ${view === 'inventory' ? 'active' : ''}`} onClick={() => setView('inventory')}>
-            <Package size={18} /> <span>Inventory</span>
-          </button>
-          <button className={`nav-item ${view === 'invoices' ? 'active' : ''}`} onClick={() => setView('invoices')}>
-            <FileText size={18} /> <span>Invoices</span>
-          </button>
-          <button className={`nav-item ${view === 'payments' ? 'active' : ''}`} onClick={() => setView('payments')}>
-            <Banknote size={18} /> <span>Payments</span>
-          </button>
-          <button className={`nav-item ${view === 'balances' ? 'active' : ''}`} onClick={() => setView('balances')}>
-            <CreditCard size={18} /> <span>Balances</span>
-          </button>
-          <button className="theme-toggle" onClick={toggleTheme}>
-            {theme === 'light' ? <Moon size={18} /> : <Sun size={18} />}
-          </button>
+      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '3rem' }}>
+        <div onClick={() => setView('dashboard')} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          <div style={{ background: 'var(--primary)', color: 'white', padding: '0.5rem', borderRadius: '0.5rem' }}>
+            <Package size={24} />
+          </div>
+          <h2 style={{ margin: 0 }}>Jannat <span style={{ color: 'var(--primary)' }}>Uniforms</span></h2>
         </div>
+
+        <nav style={{ display: 'flex', gap: '1rem' }}>
+          <button className={`btn ${view === 'dashboard' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setView('dashboard')}>
+            <Users size={18} /> Dashboard
+          </button>
+          <button className={`btn ${view === 'inventory' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setView('inventory')}>
+            <Package size={18} /> Inventory
+          </button>
+          <button className={`btn ${view === 'invoices' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setView('invoices')}>
+            <FileText size={18} /> Invoices
+          </button>
+          <button className={`btn ${view === 'payments' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setView('payments')}>
+            <Banknote size={18} /> Payments
+          </button>
+          <button className={`btn ${view === 'balances' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setView('balances')}>
+            <Banknote size={18} /> Balances
+          </button>
+          <button className="btn btn-ghost" onClick={toggleTheme} style={{ padding: '0.5rem' }}>
+            {theme === 'light' ? <Moon size={20} /> : <Sun size={20} />}
+          </button>
+        </nav>
       </header>
 
-      <main style={{ animation: 'fadeIn 0.5s ease-out' }}>
-        {view === 'dashboard' && (
-          <div className="view-dashboard">
-            <h1 style={{ marginBottom: '2.5rem' }}>Dashboard Overview</h1>
-            <div className="grid-cols-3" style={{ marginBottom: '3rem' }}>
-              <div className="card summary-card">
-                <span className="summary-label">Active Clients</span>
-                <span className="summary-value">{clients.length}</span>
+      {/* View: Dashboard (Client Cards) */}
+      {view === 'dashboard' && (
+        <section>
+          <h1>Client Dashboard</h1>
+          <p style={{ color: 'var(--text-main)', opacity: 0.7, marginBottom: '2rem' }}>Select a client to start creating an invoice.</p>
+          <div className="client-grid">
+            {clients.map(client => (
+              <div key={client.id} className="card" onClick={() => handleClientClick(client)} style={{ cursor: 'pointer', borderLeft: '4px solid var(--primary)' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  <span className="badge badge-blue">{client.code}</span>
+                  <h3 style={{ margin: 0 }}>{client.name}</h3>
+                  <button className="btn btn-primary" style={{ marginTop: '1rem', width: 'fit-content' }}>
+                    Create Invoice <ChevronLeft size={16} />
+                  </button>
+                </div>
               </div>
-              <div className="card summary-card">
-                <span className="summary-label">Total Stock Items</span>
-                <span className="summary-value">{inventory.reduce((sum, item) => sum + item.quantity, 0)}</span>
-              </div>
-              <div className="card summary-card" style={{ borderLeft: '4px solid var(--primary)' }}>
-                <span className="summary-label">Total Revenue</span>
-                <span className="summary-value">Rs. {invoices.reduce((sum, inv) => sum + inv.grand_total, 0).toLocaleString()}</span>
-              </div>
-            </div>
-            <section>
-              <h1>Client Dashboard</h1>
-              <p style={{ color: 'var(--text-main)', opacity: 0.7, marginBottom: '2rem' }}>Select a client to start creating an invoice.</p>
-              <div className="client-grid">
-                {clients.map(client => (
-                  <div key={client.id} className="card" onClick={() => handleClientClick(client)} style={{ cursor: 'pointer', borderLeft: '4px solid var(--primary)' }}>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                      <span className="badge badge-blue">{client.code}</span>
-                      <h3 style={{ margin: 0 }}>{client.name}</h3>
-                      <button className="btn btn-primary" style={{ marginTop: '1rem', width: 'fit-content' }}>
-                        Create Invoice <ChevronLeft size={16} />
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </section>
+            ))}
           </div>
-        )}
+        </section>
+      )}
 
       {/* View: Invoice Builder */}
       {view === 'invoice-builder' && (
@@ -850,22 +839,21 @@ const App = () => {
 
       {/* View: Balances */}
       {view === 'balances' && (
-        <div className="view-balances">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '3rem' }}>
+        <section>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
             <h1>Client Balances & Ledger</h1>
-            <div style={{ width: '300px' }}>
-              <select 
-                value={balanceClient} 
-                onChange={(e) => {
-                  setBalanceClient(e.target.value);
-                  setReceivableForm(prev => ({ ...prev, client_id: e.target.value }));
-                  fetchBalances(e.target.value);
-                }}
-              >
-                <option value="">Select a Client</option>
-                {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
-            </div>
+            <select 
+              style={{ width: '300px' }} 
+              value={balanceClient} 
+              onChange={(e) => {
+                setBalanceClient(e.target.value);
+                setReceivableForm(prev => ({ ...prev, client_id: e.target.value }));
+                fetchBalances(e.target.value);
+              }}
+            >
+              <option value="">Select a Client...</option>
+              {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
           </div>
 
           {!balanceClient ? (
@@ -875,23 +863,25 @@ const App = () => {
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-              <div className="grid-cols-3" style={{ marginBottom: '3rem' }}>
-                <div className="card summary-card" style={{ borderLeft: '4px solid var(--primary)' }}>
-                  <span className="summary-label">Total Receivable</span>
-                  <span className="summary-value">Rs. {balanceData.summary.total_receivable.toLocaleString()}</span>
+              {/* Summary Cards */}
+              <div className="client-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}>
+                <div className="card" style={{ borderLeft: '4px solid var(--primary)' }}>
+                  <div style={{ color: '#64748b', fontSize: '0.875rem' }}>Total Receivable</div>
+                  <h2 style={{ margin: '0.5rem 0' }}>Rs. {balanceData.summary.total_receivable.toLocaleString()}</h2>
                 </div>
-                <div className="card summary-card" style={{ borderLeft: '4px solid var(--success)' }}>
-                  <span className="summary-label">Total Paid</span>
-                  <span className="summary-value">Rs. {balanceData.summary.total_paid.toLocaleString()}</span>
+                <div className="card" style={{ borderLeft: '4px solid var(--success)' }}>
+                  <div style={{ color: '#64748b', fontSize: '0.875rem' }}>Total Paid</div>
+                  <h2 style={{ margin: '0.5rem 0' }}>Rs. {balanceData.summary.total_paid.toLocaleString()}</h2>
                 </div>
-                <div className="card summary-card" style={{ borderLeft: '4px solid var(--danger)', background: 'rgba(239, 68, 68, 0.02)' }}>
-                  <span className="summary-label">Net Balance (Remaining)</span>
-                  <span className="summary-value" style={{ color: 'var(--danger)' }}>Rs. {balanceData.summary.balance.toLocaleString()}</span>
+                <div className="card" style={{ borderLeft: '4px solid var(--danger)', background: 'rgba(239, 68, 68, 0.05)' }}>
+                  <div style={{ color: '#64748b', fontSize: '0.875rem' }}>Net Balance (Remaining)</div>
+                  <h1 style={{ margin: '0.5rem 0', color: 'var(--danger)' }}>Rs. {balanceData.summary.balance.toLocaleString()}</h1>
                 </div>
               </div>
 
-              <div className="invoice-split">
-                <div className="card" style={{ minHeight: '400px', flex: 2 }}>
+              <div className="invoice-split" style={{ alignItems: 'flex-start' }}>
+                {/* Ledger History */}
+                <div className="card" style={{ flex: 2 }}>
                   <h3>Transaction History</h3>
                   <div className="table-container">
                     <table>
@@ -906,19 +896,14 @@ const App = () => {
                       </thead>
                       <tbody>
                         {balanceData.ledger.map((item, idx) => (
-                          <tr key={`${item.type}-${item.id || idx}`}>
-                            <td>{new Date(item.date).toLocaleDateString()}</td>
+                          <tr key={idx}>
+                            <td>{item.date}</td>
                             <td>
-                              <span className={`badge ${item.type === 'PAYMENT' ? 'badge-blue' : 'badge-blue'}`} style={{ 
-                                background: item.type === 'PAYMENT' ? 'rgba(16, 185, 129, 0.1)' : 
-                                           item.type === 'INVOICE' ? 'rgba(99, 102, 241, 0.1)' : 'rgba(245, 158, 11, 0.1)',
-                                color: item.type === 'PAYMENT' ? 'var(--success)' : 
-                                       item.type === 'INVOICE' ? 'var(--primary)' : 'var(--warning)'
-                              }}>
+                              <span className={`badge ${item.type === 'PAYMENT' ? 'badge-blue' : 'badge-gray'}`}>
                                 {item.type}
                               </span>
                             </td>
-                            <td>{item.ref}</td>
+                            <td><strong>{item.ref}</strong></td>
                             <td style={{ fontWeight: 600, color: item.amount < 0 ? 'var(--success)' : 'inherit' }}>
                               {item.amount < 0 ? `(Rs. ${Math.abs(item.amount).toLocaleString()})` : `Rs. ${item.amount.toLocaleString()}`}
                             </td>
@@ -1013,9 +998,20 @@ const App = () => {
                         onChange={(e) => setReceivableForm(prev => ({ ...prev, date: e.target.value }))}
                       />
                     </div>
-                    <div className="form-group">
-                      <label>Notes/Description</label>
+                    <div>
+                      <label style={{ display: 'block', marginBottom: '0.5rem' }}>Notes/Description</label>
                       <textarea 
+                        style={{ 
+                          width: '100%', 
+                          minHeight: '80px', 
+                          padding: '0.75rem', 
+                          borderRadius: '8px', 
+                          border: '1px solid var(--border-color)',
+                          fontFamily: 'inherit',
+                          fontSize: '0.875rem',
+                          outline: 'none',
+                          resize: 'vertical'
+                        }}
                         value={receivableForm.notes} 
                         onChange={(e) => setReceivableForm(prev => ({ ...prev, notes: e.target.value }))}
                         placeholder="e.g. Opening Balance 2024"
@@ -1029,9 +1025,9 @@ const App = () => {
               </div>
             </div>
           )}
-        </div>
+        </section>
       )}
-      </main>
+
     </div>
   );
 };
