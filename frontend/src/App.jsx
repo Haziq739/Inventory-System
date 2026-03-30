@@ -33,6 +33,7 @@ const App = () => {
   const [balanceData, setBalanceData] = useState({ ledger: [], summary: { total_receivable: 0, total_paid: 0, balance: 0 } });
   const [balanceClient, setBalanceClient] = useState('');
   const [receivableForm, setReceivableForm] = useState({ client_id: '', amount: '', date: new Date().toISOString().split('T')[0], notes: '' });
+  const [balanceType, setBalanceType] = useState('RECEIVABLE'); // 'RECEIVABLE' or 'PAYMENT'
 
   // Initialize data
   useEffect(() => {
@@ -173,18 +174,40 @@ const App = () => {
     if (!balanceClient || !receivableForm.amount) return toast.error('Please select a client and enter an amount');
     try {
       setIsLoading(true);
-      await api.post('/receivables', { ...receivableForm, client_id: balanceClient });
-      toast.success('Amount added to ledger');
+      const isPayment = balanceType === 'PAYMENT';
+      const endpoint = isPayment ? '/payments' : '/receivables';
+      const payload = { ...receivableForm, client_id: balanceClient };
       
-      // Clear form except for client_id
+      await api.post(endpoint, payload);
+      toast.success(isPayment ? 'Payment recorded' : 'Amount added to ledger');
+      
       setReceivableForm({ client_id: balanceClient, amount: '', date: new Date().toISOString().split('T')[0], notes: '' });
-      
-      // Refresh balance after a very short delay to ensure DB propagation
       setTimeout(() => fetchBalances(balanceClient), 300);
+      if (isPayment) fetchPayments(); // Refresh global payments list too
     } catch (err) { 
       toast.error('Failed to update balance'); 
     } finally { 
       setIsLoading(false); 
+    }
+  };
+
+  const handleQuickPay = async (item) => {
+    if (!window.confirm(`Record full payment of Rs. ${item.amount.toLocaleString()} for ${item.ref}?`)) return;
+    try {
+      setIsLoading(true);
+      await api.post('/payments', {
+        client_id: balanceClient,
+        amount: item.amount,
+        date: new Date().toISOString().split('T')[0],
+        notes: `Quick Payment for ${item.type}: ${item.ref}`
+      });
+      toast.success('Payment recorded successfully');
+      setTimeout(() => fetchBalances(balanceClient), 300);
+      fetchPayments();
+    } catch (err) {
+      toast.error('Failed to record payment');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -849,7 +872,17 @@ const App = () => {
                             <td style={{ fontWeight: 600, color: item.amount < 0 ? 'var(--success)' : 'inherit' }}>
                               {item.amount < 0 ? `(Rs. ${Math.abs(item.amount).toLocaleString()})` : `Rs. ${item.amount.toLocaleString()}`}
                             </td>
-                            <td>
+                            <td style={{ display: 'flex', gap: '0.5rem' }}>
+                              {(item.type === 'INVOICE' || item.type === 'RECEIVABLE') && (
+                                <button 
+                                  className="btn btn-ghost" 
+                                  style={{ color: 'var(--success)', padding: '0.25rem' }} 
+                                  title="Mark as Paid"
+                                  onClick={() => handleQuickPay(item)}
+                                >
+                                  <CheckCircle size={16} />
+                                </button>
+                              )}
                               {item.type === 'RECEIVABLE' && (
                                 <button className="btn btn-ghost" style={{ color: 'var(--danger)', padding: '0.25rem' }} onClick={() => {
                                   if(window.confirm('Delete this entry?')) {
@@ -870,10 +903,28 @@ const App = () => {
                   </div>
                 </div>
 
-                {/* Add Receivable Form */}
+                {/* Add Transaction Form */}
                 <div className="card" style={{ flex: 1 }}>
-                  <h3>Add Amount to be Received</h3>
-                  <p style={{ fontSize: '0.875rem', color: '#64748b', marginBottom: '1.5rem' }}>Manual entry for debt or opening balance.</p>
+                  <h3>Add Balance Transaction</h3>
+                  <div style={{ display: 'flex', gap: '0.5rem', margin: '1rem 0' }}>
+                    <button 
+                      className={`btn ${balanceType === 'RECEIVABLE' ? 'btn-primary' : 'btn-ghost'}`}
+                      style={{ flex: 1, fontSize: '0.75rem' }}
+                      onClick={() => setBalanceType('RECEIVABLE')}
+                    >
+                      Receivable (+)
+                    </button>
+                    <button 
+                      className={`btn ${balanceType === 'PAYMENT' ? 'btn-primary' : 'btn-ghost'}`}
+                      style={{ flex: 1, fontSize: '0.75rem' }}
+                      onClick={() => setBalanceType('PAYMENT')}
+                    >
+                      Payment (-)
+                    </button>
+                  </div>
+                  <p style={{ fontSize: '0.875rem', color: '#64748b', marginBottom: '1rem' }}>
+                    {balanceType === 'RECEIVABLE' ? 'Record an amount to be received (Debt).' : 'Record a payment received from client.'}
+                  </p>
                   <form onSubmit={submitReceivable} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                     <div>
                       <label>Amount (Rs.)</label>
@@ -902,7 +953,7 @@ const App = () => {
                       ></textarea>
                     </div>
                     <button type="submit" className="btn btn-primary" disabled={isLoading}>
-                      {isLoading ? 'Saving...' : 'Add to Ledger'}
+                      {isLoading ? 'Saving...' : (balanceType === 'RECEIVABLE' ? 'Add to Ledger' : 'Record Payment')}
                     </button>
                   </form>
                 </div>
