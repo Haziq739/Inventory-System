@@ -2,7 +2,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Users, Package, FileText, Plus, Moon, Sun, 
   Search, Trash2, Download, CheckCircle, ChevronLeft,
-  X, ShoppingCart, Pencil, Save, Eye, Banknote
+  X, ShoppingCart, Pencil, Save, Eye, Banknote,
+  LayoutDashboard, CreditCard
 } from 'lucide-react';
 import { toast, Toaster } from 'react-hot-toast';
 import api from './api/api';
@@ -257,7 +258,7 @@ const App = () => {
   }, [inventory, searchQuery, activeCategory]);
 
   return (
-    <div className="app-container">
+    <div className="app-container" data-theme={theme}>
       <Toaster position="top-right" />
       
       {/* Navigation Bar */}
@@ -279,7 +280,7 @@ const App = () => {
             <CreditCard size={18} /> <span>Balances</span>
           </button>
           <button className="theme-toggle" onClick={toggleTheme}>
-            {theme.mode === 'light' ? <Moon size={18} /> : <Sun size={18} />}
+            {theme === 'light' ? <Moon size={18} /> : <Sun size={18} />}
           </button>
         </div>
       </header>
