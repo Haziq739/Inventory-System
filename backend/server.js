@@ -16,6 +16,7 @@ let dbPromise = null;
 
 async function initDatabase() {
   console.log('Initializing database... Mode:', isProd ? 'Production' : 'Local');
+  let localDb;
   
   if (isProd) {
     const client = createClient({
@@ -23,8 +24,7 @@ async function initDatabase() {
       authToken: process.env.TURSO_AUTH_TOKEN || '',
     });
     
-    // Wrap libsql client to match my expected interface
-    db = {
+    localDb = {
       execute: async (sql, params = []) => {
         const res = await client.execute({ sql, args: params });
         return { rows: res.rows };
@@ -38,12 +38,12 @@ async function initDatabase() {
       }
     };
   } else {
-    // Local SQLite fallback using sql.js
+    // Local SQLite fallback
     let initSqlJs;
     try {
       initSqlJs = require('sql.js');
     } catch (e) {
-      console.warn('sql.js not found, local fallback will fail. Run npm install.');
+      console.warn('sql.js not found');
       throw new Error('Local database driver missing');
     }
     
@@ -51,7 +51,7 @@ async function initDatabase() {
     const SQL = await initSqlJs({ locateFile: file => path.join(__dirname, file) });
     let tempDb = fs.existsSync(DB_PATH) ? new SQL.Database(fs.readFileSync(DB_PATH)) : new SQL.Database();
 
-    db = {
+    localDb = {
       execute: async (sql, params = []) => {
         const stmt = tempDb.prepare(sql);
         if (params.length) stmt.bind(params);
@@ -87,91 +87,44 @@ async function initDatabase() {
   ];
 
   for (const q of schema) {
-    await db.run(q);
+    await localDb.run(q);
   }
 
   // Check seeding
-  const check = await db.execute('SELECT COUNT(*) as cnt FROM clients');
+  const check = await localDb.execute('SELECT COUNT(*) as cnt FROM clients');
   const count = check.rows[0].cnt || check.rows[0]['COUNT(*)'] || 0;
   if (count === 0) {
-    await seedData();
-  }
-}
-
-async function seedData() {
-  console.log('Seeding database with initial data...');
-  const clients = [
-    ['Asia Book Depot', 'ABD'],
-    ['Royal Genius Cambridge High School', 'RGCHS'],
-    ['IAFAA Publishers', 'IAFAA'],
-    ['Gujranwala Food Industry', 'GFI']
-  ];
-  for (const [name, code] of clients) {
-    await db.run('INSERT INTO clients (name, code) VALUES (?, ?)', [name, code]);
-  }
-
-  await db.run("INSERT INTO categories (name) VALUES (?)", ['RILLS']);
-  await db.run("INSERT INTO categories (name) VALUES (?)", ['STEP SCHOOL']);
-
-  const rills = await db.execute("SELECT id FROM categories WHERE name = 'RILLS'");
-  const step = await db.execute("SELECT id FROM categories WHERE name = 'STEP SCHOOL'");
-  const rillsId = rills.rows[0].id;
-  const stepId = step.rows[0].id;
-
-  const items = [
-    ['Rills Boy Shirt 18', 'RILLS-SH-18', rillsId, 760],
-    ['Rills Boy Shirt 20', 'RILLS-SH-20', rillsId, 760],
-    ['Rills Boy Shirt 22', 'RILLS-SH-22', rillsId, 810],
-    ['Rills Boy Shirt 24', 'RILLS-SH-24', rillsId, 810],
-    ['Rills Boy Shirt 26', 'RILLS-SH-26', rillsId, 880],
-    ['Rills Boy Shirt 28', 'RILLS-SH-28', rillsId, 880],
-    ['Rills Boy Shirt 30', 'RILLS-SH-30', rillsId, 930],
-    ['Rills Boy Shirt 32', 'RILLS-SH-32', rillsId, 930],
-    ['Rills Boy Shirt 34', 'RILLS-SH-34', rillsId, 1000],
-    ['Rills Boy Shirt 36', 'RILLS-SH-36', rillsId, 1000],
-    ['Rills Boys Trouser 24', 'RILLS-TR-24', rillsId, 880],
-    ['Rills Boys Trouser 26', 'RILLS-TR-26', rillsId, 880],
-    ['Rills Boys Trouser 28', 'RILLS-TR-28', rillsId, 930],
-    ['Rills Boys Trouser 30', 'RILLS-TR-30', rillsId, 930],
-    ['Rills Boys Trouser 32', 'RILLS-TR-32', rillsId, 980],
-    ['Rills Boys Trouser 34', 'RILLS-TR-34', rillsId, 980],
-    ['Rills Boys Trouser 36', 'RILLS-TR-36', rillsId, 1030],
-    ['Rills Boys Trouser 38', 'RILLS-TR-38', rillsId, 1030],
-    ['Rills Boys Trouser 40', 'RILLS-TR-40', rillsId, 1080],
-    ['Rills Boys Trouser 42', 'RILLS-TR-42', rillsId, 1080],
-    ['Rills Girls Suit 30', 'RILLS-GS-30', rillsId, 1600],
-    ['Rills Girls Suit 32', 'RILLS-GS-32', rillsId, 1600],
-    ['Rills Girls Suit 34', 'RILLS-GS-34', rillsId, 1700],
-    ['Rills Girls Suit 36', 'RILLS-GS-36', rillsId, 1800],
-    ['Rills Girls Suit 38', 'RILLS-GS-38', rillsId, 1900],
-    ['Rills Girls Suit 40', 'RILLS-GS-40', rillsId, 2000],
-    ['Rills Girls Suit 42', 'RILLS-GS-42', rillsId, 2100],
-    ['Rills Girls Suit 44', 'RILLS-GS-44', rillsId, 2200],
-    ['Rills Girls Suit 46', 'RILLS-GS-46', rillsId, 2300],
-    ['Rills Girls Dupatta', 'RILLS-DUP-01', rillsId, 875],
-    ['Step School Shirt 18', 'STEP-SH-18', stepId, 495],
-    ['Step School Shirt 20', 'STEP-SH-20', stepId, 495],
-    ['Step School Shirt 22', 'STEP-SH-22', stepId, 495],
-    ['Step School Shirt 24', 'STEP-SH-24', stepId, 495],
-    ['Step School Boys Trouser 24', 'STEP-TR-24', stepId, 575],
-    ['Step School Boys Trouser 26', 'STEP-TR-26', stepId, 575],
-    ['Step School Boys Trouser 28', 'STEP-TR-28', stepId, 575],
-    ['Step School Boys Trouser 30', 'STEP-TR-30', stepId, 575],
-  ];
-
-  for (const [name, code, catId, price] of items) {
-    await db.run('INSERT INTO inventory (name, code, category_id, price) VALUES (?, ?, ?, ?)', [name, code, catId, price]);
+    // Seed using localDb
+    console.log('Seeding initial data...');
+    const seedClients = [['Asia Book Depot', 'ABD'], ['Royal Genius Cambridge High School', 'RGCHS'], ['IAFAA Publishers', 'IAFAA'], ['Gujranwala Food Industry', 'GFI']];
+    for (const [name, code] of seedClients) await localDb.run('INSERT INTO clients (name, code) VALUES (?, ?)', [name, code]);
+    
+    await localDb.run("INSERT INTO categories (name) VALUES (?)", ['RILLS']);
+    await localDb.run("INSERT INTO categories (name) VALUES (?)", ['STEP SCHOOL']);
+    
+    const rillsRes = await localDb.execute("SELECT id FROM categories WHERE name = 'RILLS'");
+    const stepRes = await localDb.execute("SELECT id FROM categories WHERE name = 'STEP SCHOOL'");
+    const rillsId = rillsRes.rows[0].id;
+    const stepId = stepRes.rows[0].id;
+    
+    const seedItems = [
+        ['Rills Boy Shirt 18', 'RILLS-SH-18', rillsId, 760], ['Rills Boy Shirt 20', 'RILLS-SH-20', rillsId, 760], ['Rills Boy Shirt 22', 'RILLS-SH-22', rillsId, 810], ['Rills Boy Shirt 24', 'RILLS-SH-24', rillsId, 810], ['Rills Boy Shirt 26', 'RILLS-SH-26', rillsId, 880], ['Rills Boy Shirt 28', 'RILLS-SH-28', rillsId, 880], ['Rills Boy Shirt 30', 'RILLS-SH-30', rillsId, 930], ['Rills Boy Shirt 32', 'RILLS-SH-32', rillsId, 930], ['Rills Boy Shirt 34', 'RILLS-SH-34', rillsId, 1000], ['Rills Boy Shirt 36', 'RILLS-SH-36', rillsId, 1000],
+        ['Rills Boys Trouser 24', 'RILLS-TR-24', rillsId, 880], ['Rills Boys Trouser 26', 'RILLS-TR-26', rillsId, 880], ['Rills Boys Trouser 28', 'RILLS-TR-28', rillsId, 930], ['Rills Boys Trouser 30', 'RILLS-TR-30', rillsId, 930], ['Rills Boys Trouser 32', 'RILLS-TR-32', rillsId, 980], ['Rills Boys Trouser 34', 'RILLS-TR-34', rillsId, 980], ['Rills Boys Trouser 36', 'RILLS-TR-36', rillsId, 1030], ['Rills Boys Trouser 38', 'RILLS-TR-38', rillsId, 1030], ['Rills Boys Trouser 40', 'RILLS-TR-40', rillsId, 1080], ['Rills Boys Trouser 42', 'RILLS-TR-42', rillsId, 1080],
+        ['Rills Girls Suit 30', 'RILLS-GS-30', rillsId, 1600], ['Rills Girls Suit 32', 'RILLS-GS-32', rillsId, 1600], ['Rills Girls Suit 34', 'RILLS-GS-34', rillsId, 1700], ['Rills Girls Suit 36', 'RILLS-GS-36', rillsId, 1800], ['Rills Girls Suit 38', 'RILLS-GS-38', rillsId, 1900], ['Rills Girls Suit 40', 'RILLS-GS-40', rillsId, 2000], ['Rills Girls Suit 42', 'RILLS-GS-42', rillsId, 2100], ['Rills Girls Suit 44', 'RILLS-GS-44', rillsId, 2200], ['Rills Girls Suit 46', 'RILLS-GS-46', rillsId, 2300], ['Rills Girls Dupatta', 'RILLS-DUP-01', rillsId, 875],
+        ['Step School Shirt 18', 'STEP-SH-18', stepId, 495], ['Step School Shirt 20', 'STEP-SH-20', stepId, 495], ['Step School Shirt 22', 'STEP-SH-22', stepId, 495], ['Step School Shirt 24', 'STEP-SH-24', stepId, 495], ['Step School Boys Trouser 24', 'STEP-TR-24', stepId, 575], ['Step School Boys Trouser 26', 'STEP-TR-26', stepId, 575], ['Step School Boys Trouser 28', 'STEP-TR-28', stepId, 575], ['Step School Boys Trouser 30', 'STEP-TR-30', stepId, 575],
+    ];
+    for (const [name, code, catId, price] of seedItems) await localDb.run('INSERT INTO inventory (name, code, category_id, price) VALUES (?, ?, ?, ?)', [name, code, catId, price]);
+    
+    const allC = (await localDb.execute('SELECT id FROM clients')).rows;
+    for (const c of allC) await localDb.run('INSERT INTO invoice_sequences (client_id, last_number) VALUES (?, 0)', [c.id]);
+    
+    await localDb.run("INSERT OR IGNORE INTO settings (key, value) VALUES ('theme', 'light')");
+    await localDb.run("INSERT OR IGNORE INTO settings (key, value) VALUES ('receipt_sequence', '0')");
+    console.log('Seeding complete.');
   }
 
-  const allClients = (await db.execute('SELECT id FROM clients')).rows;
-  for (const c of allClients) {
-    await db.run('INSERT INTO invoice_sequences (client_id, last_number) VALUES (?, 0)', [c.id]);
-  }
-
-  await db.run("INSERT OR IGNORE INTO settings (key, value) VALUES ('theme', 'light')");
-  await db.run("INSERT OR IGNORE INTO settings (key, value) VALUES ('receipt_sequence', '0')");
-
-  console.log('Seeding complete.');
+  // FINALLY set the global db
+  db = localDb;
 }
 
 async function getDb() {
