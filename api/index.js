@@ -186,8 +186,26 @@ app.get('/api/inventory', async (req, res) => {
 });
 
 app.get('/api/invoices', async (req, res) => {
-  const result = await db.execute('SELECT inv.*, cl.name as client_name FROM invoices inv JOIN clients cl ON inv.client_id = cl.id ORDER BY inv.created_at DESC');
-  res.json(result.rows);
+  try {
+    const invRes = await db.execute(`
+      SELECT inv.*, cl.name as client_name 
+      FROM invoices inv 
+      JOIN clients cl ON inv.client_id = cl.id 
+      ORDER BY inv.created_at DESC
+    `);
+    
+    const invoices = invRes.rows;
+    
+    // Fetch items for each invoice
+    for (let inv of invoices) {
+      const itemsRes = await db.execute('SELECT * FROM invoice_items WHERE invoice_id = ?', [inv.id]);
+      inv.items = itemsRes.rows;
+    }
+    
+    res.json(invoices);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 app.get('/api/payments', async (req, res) => {
@@ -197,27 +215,87 @@ app.get('/api/payments', async (req, res) => {
 
 app.post('/api/invoices', async (req, res) => {
     const { client_id, items, date } = req.body;
+    console.log('Creating invoice for client:', client_id, 'with', items?.length, 'items');
+    
+    if (!client_id || !items || !items.length) {
+        return res.status(400).json({ error: 'Client and items are required' });
+    }
+
     try {
+        // 1. Get client info
         const clientRes = await db.execute('SELECT * FROM clients WHERE id = ?', [Number(client_id)]);
         const client = clientRes.rows[0];
+        if (!client) throw new Error('Client not found');
+
+        // 2. Handle Invoice Sequence safely
         const seqRes = await db.execute('SELECT last_number FROM invoice_sequences WHERE client_id = ?', [Number(client_id)]);
-        const nextNum = (seqRes.rows[0]?.last_number || 0) + 1;
-        await db.run('UPDATE invoice_sequences SET last_number = ? WHERE client_id = ?', [nextNum, Number(client_id)]);
+        let nextNum = (seqRes.rows[0] ? (Number(seqRes.rows[0].last_number) || 0) : 0) + 1;
+        
+        if (!seqRes.rows[0]) {
+            await db.run('INSERT INTO invoice_sequences (client_id, last_number) VALUES (?, ?)', [Number(client_id), nextNum]);
+        } else {
+            await db.run('UPDATE invoice_sequences SET last_number = ? WHERE client_id = ?', [nextNum, Number(client_id)]);
+        }
+
         const invoiceNumber = `${client.code}-${String(nextNum).padStart(4, '0')}`;
-        const result = await db.run('INSERT INTO invoices (invoice_number, client_id, date, grand_total) VALUES (?, ?, ?, ?)', [invoiceNumber, Number(client_id), date, 0]);
-        res.status(201).json({ id: result.lastInsertRowid, invoice_number: invoiceNumber });
-    } catch(err) { res.status(400).json({ error: err.message }); }
+        const grandTotal = items.reduce((sum, item) => sum + (Number(item.quantity) * Number(item.unit_price)), 0);
+
+        // 3. Create Invoice
+        const result = await db.run('INSERT INTO invoices (invoice_number, client_id, date, grand_total) VALUES (?, ?, ?, ?)', 
+            [invoiceNumber, Number(client_id), date, grandTotal]);
+        
+        // Handle Turso BigInt ID
+        const invoiceId = result.lastInsertRowid.toString(); 
+
+        // 4. Insert Items
+        for (const item of items) {
+            const itemTotal = Number(item.quantity) * Number(item.unit_price);
+            await db.run('INSERT INTO invoice_items (invoice_id, item_id, item_name, item_code, quantity, unit_price, total) VALUES (?, ?, ?, ?, ?, ?, ?)', 
+                [invoiceId, Number(item.item_id), item.item_name, item.item_code, Number(item.quantity), Number(item.unit_price), itemTotal]);
+        }
+
+        console.log('Invoice created successfully:', invoiceNumber, 'ID:', invoiceId);
+        res.status(201).json({ 
+            id: invoiceId, 
+            invoice_number: invoiceNumber,
+            client_name: client.name,
+            date,
+            grand_total: grandTotal,
+            items: items.map(i => ({...i, total: Number(i.quantity) * Number(i.unit_price)}))
+        });
+    } catch(err) { 
+        console.error('Invoice Creation Error:', err.message);
+        res.status(500).json({ error: 'Database error: ' + err.message }); 
+    }
 });
 
 app.post('/api/payments', async (req, res) => {
     const { client_id, amount, date, notes } = req.body;
     try {
+        const clientRes = await db.execute('SELECT * FROM clients WHERE id = ?', [Number(client_id)]);
+        const client = clientRes.rows[0];
+        if (!client) throw new Error('Client not found');
+
         let seqRes = await db.execute("SELECT value FROM settings WHERE key = 'receipt_sequence'");
         const nextNumber = parseInt(seqRes.rows[0]?.value || "0", 10) + 1;
         await db.run("UPDATE settings SET value = ? WHERE key = 'receipt_sequence'", [nextNumber.toString()]);
+        
         const receiptNumber = `REC-${String(nextNumber).padStart(4, '0')}`;
-        await db.run('INSERT INTO payments (receipt_number, client_id, amount, date, notes) VALUES (?, ?, ?, ?, ?)', [receiptNumber, Number(client_id), amount, date, notes]);
-        res.status(201).json({ receipt_number: receiptNumber });
+        const result = await db.run('INSERT INTO payments (receipt_number, client_id, amount, date, notes) VALUES (?, ?, ?, ?, ?)', 
+            [receiptNumber, Number(client_id), Number(amount), date, notes]);
+        
+        const paymentId = result.lastInsertRowid.toString();
+
+        res.status(201).json({ 
+            id: paymentId,
+            receipt_number: receiptNumber,
+            client_id: Number(client_id),
+            client_name: client.name,
+            client_code: client.code,
+            amount: Number(amount),
+            date,
+            notes
+        });
     } catch(err) { res.status(400).json({ error: err.message }); }
 });
 
