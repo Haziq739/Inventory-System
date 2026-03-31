@@ -868,25 +868,31 @@ const App = () => {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
               {/* Summary Cards */}
               <div className="client-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}>
-                <div className="card" style={{ borderLeft: '4px solid var(--primary)' }}>
-                  <div style={{ color: '#64748b', fontSize: '0.875rem' }}>Total Receivable</div>
-                  <h2 style={{ margin: '0.5rem 0' }}>Rs. {Math.round(balanceData.summary.total_receivable).toLocaleString()}</h2>
+                <div className="card" style={{ borderLeft: '4px solid var(--primary)', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                  <div style={{ color: '#64748b', fontSize: '0.875rem', fontWeight: 600 }}>Total Receivable</div>
+                  <h2 style={{ margin: '0.5rem 0' }}>Rs. {balanceData.summary.total_receivable.toLocaleString()}</h2>
                 </div>
-                <div className="card" style={{ borderLeft: '4px solid var(--success)' }}>
-                  <div style={{ color: '#64748b', fontSize: '0.875rem' }}>Total Paid</div>
-                  <h2 style={{ margin: '0.5rem 0' }}>Rs. {Math.round(balanceData.summary.total_paid).toLocaleString()}</h2>
+                <div className="card" style={{ borderLeft: '4px solid var(--success)', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                  <div style={{ color: '#64748b', fontSize: '0.875rem', fontWeight: 600 }}>Total Paid</div>
+                  <h2 style={{ margin: '0.5rem 0' }}>Rs. {balanceData.summary.total_paid.toLocaleString()}</h2>
                 </div>
-                <div className="card" style={{ borderLeft: `4px solid ${balanceData.summary.balance > 0 ? 'var(--danger)' : 'var(--success)'}`, background: balanceData.summary.balance > 0 ? 'rgba(239, 68, 68, 0.05)' : 'rgba(16, 185, 129, 0.05)' }}>
-                  <div style={{ color: '#64748b', fontSize: '0.875rem' }}>Net Balance (Remaining)</div>
-                  <h1 style={{ margin: '0.5rem 0', color: balanceData.summary.balance > 0 ? 'var(--danger)' : 'var(--success)' }}>
-                    Rs. {Math.max(0, Math.round(balanceData.summary.balance)).toLocaleString()}
+                <div className="card" style={{ borderLeft: `4px solid ${balanceData.summary.balance > 0 ? 'var(--danger)' : 'var(--success)'}`, background: balanceData.summary.balance > 0 ? 'rgba(239, 68, 68, 0.05)' : 'rgba(16, 185, 129, 0.05)', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                  <div style={{ color: '#64748b', fontSize: '0.875rem', fontWeight: 600 }}>Net Balance</div>
+                  <h1 style={{ margin: '0.5rem 0', color: balanceData.summary.balance > 0 ? 'var(--danger)' : 'var(--success)', fontSize: '1.75rem' }}>
+                    {balanceData.summary.balance < 0 ? '-' : ''}Rs. {Math.abs(balanceData.summary.balance).toLocaleString()}
+                  </h1>
+                </div>
+                <div className="card" style={{ borderLeft: `4px solid ${balanceData.summary.balance < 0 ? 'var(--success)' : 'var(--danger)'}`, background: balanceData.summary.balance < 0 ? 'rgba(16, 185, 129, 0.05)' : 'rgba(239, 68, 68, 0.05)', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                  <div style={{ color: '#64748b', fontSize: '0.875rem', fontWeight: 600 }}>{balanceData.summary.balance < 0 ? 'Available Credit' : 'Total Overdue'}</div>
+                  <h1 style={{ margin: '0.5rem 0', color: balanceData.summary.balance < 0 ? 'var(--success)' : 'var(--danger)', fontSize: '1.75rem' }}>
+                    Rs. {Math.abs(balanceData.summary.balance).toLocaleString()}
                   </h1>
                 </div>
               </div>
 
-              <div className="invoice-split" style={{ alignItems: 'flex-start' }}>
+              <div style={{ display: 'flex', gap: '2.5rem', alignItems: 'flex-start' }}>
                 {/* Ledger History */}
-                <div className="card" style={{ flex: 2 }}>
+                <div className="card" style={{ flex: '3', minWidth: 0 }}>
                   <h3>Transaction History</h3>
                   <div className="table-container">
                     <table>
@@ -896,45 +902,51 @@ const App = () => {
                           <th>Type</th>
                           <th>Reference</th>
                           <th>Amount</th>
-                          <th>Actions</th>
+                          <th style={{ textAlign: 'center', width: '120px' }}>Actions</th>
                         </tr>
                       </thead>
                       <tbody>
                         {balanceData.ledger.map((item, idx) => (
                           <tr key={idx}>
-                            <td>{item.date}</td>
+                            <td style={{ whiteSpace: 'nowrap' }}>{item.date}</td>
                             <td>
                               <span className={`badge ${item.type === 'PAYMENT' ? 'badge-blue' : 'badge-gray'}`}>
                                 {item.type}
                               </span>
                             </td>
                             <td><strong>{item.ref}</strong></td>
-                            <td style={{ fontWeight: 600, color: item.amount < 0 ? 'var(--success)' : 'inherit' }}>
+                            <td style={{ fontWeight: 700, color: item.amount < 0 ? 'var(--success)' : 'inherit', whiteSpace: 'nowrap' }}>
                               {item.amount < 0 ? `(Rs. ${Math.abs(item.amount).toLocaleString()})` : `Rs. ${item.amount.toLocaleString()}`}
                             </td>
-                            <td style={{ display: 'flex', gap: '0.5rem' }}>
-                              {(item.type === 'INVOICE' || item.type === 'RECEIVABLE') && (
-                                <button 
-                                  className="btn btn-ghost" 
-                                  style={{ color: 'var(--success)', padding: '0.25rem' }} 
-                                  title="Mark as Paid"
-                                  onClick={() => handleQuickPay(item)}
-                                >
-                                  <CheckCircle size={16} />
-                                </button>
-                              )}
-                              {item.type === 'RECEIVABLE' && (
-                                <button className="btn btn-ghost" style={{ color: 'var(--danger)', padding: '0.25rem' }} onClick={() => {
-                                  if(window.confirm('Delete this entry?')) {
-                                    api.delete(`/receivables/${item.id}`).then(() => {
-                                      toast.success('Deleted');
-                                      fetchBalances(balanceClient);
-                                    });
-                                  }
-                                }}>
-                                  <Trash2 size={16} />
-                                </button>
-                              )}
+                            <td>
+                              <div style={{ display: 'flex', gap: '0.4rem', justifyContent: 'center', alignItems: 'center' }}>
+                                {(item.type === 'INVOICE' || item.type === 'RECEIVABLE') && (
+                                  <button 
+                                    className="btn btn-ghost" 
+                                    style={{ color: 'var(--success)', padding: '0.4rem', border: '1px solid var(--success)', borderRadius: '6px' }} 
+                                    title="Mark as Paid"
+                                    onClick={() => handleQuickPay(item)}
+                                  >
+                                    <CheckCircle size={14} />
+                                  </button>
+                                )}
+                                {item.type === 'RECEIVABLE' && (
+                                  <button 
+                                    className="btn btn-ghost" 
+                                    style={{ color: 'var(--danger)', padding: '0.4rem', border: '1px solid var(--danger)', borderRadius: '6px' }} 
+                                    onClick={() => {
+                                      if(window.confirm('Delete this entry?')) {
+                                        api.delete(`/receivables/${item.id}`).then(() => {
+                                          toast.success('Deleted');
+                                          fetchBalances(balanceClient);
+                                        });
+                                      }
+                                    }}
+                                  >
+                                    <Trash2 size={14} />
+                                  </button>
+                                )}
+                              </div>
                             </td>
                           </tr>
                         ))}
